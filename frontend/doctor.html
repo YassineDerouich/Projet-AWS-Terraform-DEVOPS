@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediShare - Portail Praticien Sécurisé</title>
+    <style>
+        :root { --primary: #2c3e50; --secondary: #18bc9c; --bg: #ecf0f1; --text: #333; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 900px; text-align: center; transition: max-width 0.5s ease; }
+        .card.login-mode { max-width: 400px; }
+
+        .header-icon { font-size: 48px; margin-bottom: 10px; }
+        h1 { color: var(--primary); font-size: 24px; margin-bottom: 5px; }
+        p.subtitle { color: #666; font-size: 14px; margin-bottom: 25px; }
+
+        /* Formulaire Login */
+        .form-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555; }
+        input[type="number"], input[type="password"] { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; outline: none; box-sizing: border-box; }
+        input:focus { border-color: var(--secondary); }
+
+        /* Boutons */
+        .btn { background: var(--secondary); color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 600; transition: background 0.3s; margin-top: 10px; }
+        .btn:hover { background: #128f76; }
+        .btn:disabled { background: #95a5a6; }
+
+        /* Tableau de bord */
+        .table-container { overflow-x: auto; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+        th, td { padding: 15px 12px; border-bottom: 1px solid #eee; }
+        th { background-color: var(--primary); color: white; }
+        tr:hover { background-color: #f8f9fa; }
+
+        .view-btn { background: var(--primary); color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; white-space: nowrap; }
+        .view-btn:hover { background: #1a252f; }
+
+        .hidden { display: none; }
+        .error { color: #e74c3c; font-size: 14px; margin-top: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="card login-mode" id="mainCard">
+        <div class="header-icon">🩺</div>
+        <h1 id="titleText">Portail Praticien</h1>
+
+        <div id="loginSection">
+            <p class="subtitle">Authentification requise</p>
+            <div class="form-group">
+                <label>Identifiant Praticien (ID)</label>
+                <input type="number" id="doctorIdInput" placeholder="Ex: 1" required>
+            </div>
+            <div class="form-group">
+                <label>Mot de passe</label>
+                <input type="password" id="doctorPasswordInput" placeholder="••••••••" required>
+            </div>
+            <button class="btn" id="loginBtn" onclick="loginDoctor()">S'authentifier</button>
+            <div id="loginError" class="error"></div>
+        </div>
+
+        <div id="dashboardSection" class="hidden">
+            <p class="subtitle" id="welcomeDoctor" style="text-align: left; font-weight: bold; color: var(--secondary);"></p>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>N° Dossier</th>
+                            <th>Patient</th>
+                            <th>Document</th>
+                            <th>Date d'envoi</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="documentsTable">
+                        </tbody>
+                </table>
+            </div>
+
+            <button class="btn" style="background: #e74c3c; width: auto; padding: 8px 20px; float: right; margin-top: 20px;" onclick="logout()">Déconnexion</button>
+            <div style="clear: both;"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentDoctorId = null;
+
+        // --- 1. AUTHENTIFICATION ---
+        async function loginDoctor() {
+            const idInput = document.getElementById('doctorIdInput').value;
+            const passwordInput = document.getElementById('doctorPasswordInput').value;
+            const errorDiv = document.getElementById('loginError');
+            const btn = document.getElementById('loginBtn');
+
+            if (!idInput || !passwordInput) {
+                errorDiv.textContent = "⚠️ Veuillez remplir tous les champs.";
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = "⏳ Vérification...";
+            errorDiv.textContent = "";
+
+            try {
+                const response = await fetch('/api/doctor/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doctorId: idInput, password: passwordInput })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    currentDoctorId = idInput;
+
+                    // Interface Dashboard
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('dashboardSection').classList.remove('hidden');
+                    document.getElementById('mainCard').classList.remove('login-mode');
+                    document.getElementById('titleText').textContent = "Tableau de Bord Médical";
+                    document.getElementById('welcomeDoctor').textContent = `Praticien : ${data.doctor.full_name}`;
+
+                    loadDocuments();
+                } else {
+                    errorDiv.textContent = "⛔ " + data.error;
+                }
+            } catch (err) {
+                errorDiv.textContent = "❌ Erreur de connexion au serveur.";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "S'authentifier";
+            }
+        }
+
+        // --- 2. RÉCUPÉRATION DES DOCUMENTS (RBAC) ---
+        async function loadDocuments() {
+            const tbody = document.getElementById('documentsTable');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Chargement des données chiffrées...</td></tr>';
+
+            try {
+                const response = await fetch(`/api/doctor/${currentDoctorId}/documents`);
+                const docs = await response.json();
+
+                tbody.innerHTML = '';
+
+                if (docs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aucun document partagé.</td></tr>';
+                    return;
+                }
+
+                docs.forEach(doc => {
+                    const date = new Date(doc.uploaded_at).toLocaleString('fr-FR');
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>${doc.patient_id}</strong></td>
+                            <td>${doc.first_name} ${doc.last_name}</td>
+                            <td>📁 ${doc.filename}</td>
+                            <td>${date}</td>
+                            <td><button class="view-btn" onclick="viewDocument('${doc.s3_key}')">👁️ Lire via KMS</button></td>
+                        </tr>
+                    `;
+                });
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:red;">Erreur réseau.</td></tr>';
+            }
+        }
+
+        // --- 3. GÉNÉRATION URL PRÉSIGNÉE S3 ---
+        async function viewDocument(s3Key) {
+            try {
+                const response = await fetch('/api/download-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ s3Key: s3Key, doctorId: currentDoctorId })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Ouvre le lien éphémère S3 généré par le rôle IAM du Backend
+                    window.open(data.downloadUrl, '_blank');
+                } else {
+                    alert("Accès refusé : " + data.error);
+                }
+            } catch (error) {
+                alert("Erreur technique lors de la récupération.");
+            }
+        }
+
+        // --- 4. DÉCONNEXION ---
+        function logout() {
+            currentDoctorId = null;
+            location.reload(); // Simple et efficace pour reset l'état JS
+        }
+    </script>
+</body>
+</html>

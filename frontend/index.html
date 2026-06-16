@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediShare - Espace Patient Sécurisé</title>
+    <style>
+        :root { --primary: #0056b3; --secondary: #007bff; --bg: #f4f7f6; --text: #333; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 450px; text-align: center; }
+        .header-icon { font-size: 48px; margin-bottom: 10px; }
+        h1 { color: var(--primary); font-size: 24px; margin-bottom: 5px; }
+        p.subtitle { color: #666; font-size: 14px; margin-bottom: 25px; }
+
+        /* Formulaires */
+        .form-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555; }
+        input[type="text"], input[type="date"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+
+        /* Boutons */
+        .btn { background: var(--secondary); color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 600; transition: background 0.3s; margin-top: 10px; }
+        .btn:hover { background: var(--primary); }
+        .btn:disabled { background: #95a5a6; cursor: not-allowed; }
+
+        /* Messages et sections cachées */
+        #error-msg { color: #e74c3c; font-size: 14px; margin-top: 15px; font-weight: bold; }
+        #success-msg { color: #27ae60; font-size: 14px; margin-top: 15px; font-weight: bold; }
+
+        .hidden { display: none; }
+
+        /* Zone d'upload */
+        .file-upload-label { display: block; background: #e9ecef; color: #495057; padding: 15px; border: 2px dashed #adb5bd; border-radius: 8px; cursor: pointer; margin: 20px 0 10px; font-weight: 500; }
+        .file-upload-label:hover { background: #dee2e6; border-color: var(--secondary); color: var(--primary); }
+        input[type="file"] { display: none; }
+        .file-name { display: block; margin-bottom: 20px; font-size: 13px; color: #28a745; font-weight: bold; min-height: 18px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="header-icon">🏥</div>
+        <h1>Portail Patient</h1>
+        <p class="subtitle">Accès sécurisé à vos données de santé</p>
+
+        <div id="loginSection">
+            <div class="form-group">
+                <label>Numéro de Dossier (ex: DOS-1001)</label>
+                <input type="text" id="fileNumber" placeholder="DOS-XXXX" required>
+            </div>
+            <div class="form-group">
+                <label>Prénom</label>
+                <input type="text" id="firstName" required>
+            </div>
+            <div class="form-group">
+                <label>Nom de famille</label>
+                <input type="text" id="lastName" required>
+            </div>
+            <div class="form-group">
+                <label>Date de Naissance</label>
+                <input type="date" id="dob" required>
+            </div>
+
+            <button class="btn" id="loginBtn" onclick="authenticatePatient()">🔒 S'authentifier</button>
+            <div id="error-msg"></div>
+        </div>
+
+        <div id="uploadSection" class="hidden">
+            <div style="background: #e8f4fd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: #0056b3; font-size: 18px;" id="welcomeMsg">Bienvenue, ---</h3>
+                <p style="margin: 5px 0 0; font-size: 12px; color: #555;">Dossier: <span id="displayFileNumber"></span></p>
+            </div>
+
+            <label for="fileInput" class="file-upload-label">📁 Choisir un document médical</label>
+            <input type="file" id="fileInput" onchange="updateFileName()" />
+            <span class="file-name" id="fileNameDisplay">Aucun fichier sélectionné</span>
+
+            <button class="btn" id="uploadBtn" onclick="uploadDocument()">📤 Chiffrer et Envoyer</button>
+            <div id="success-msg"></div>
+
+            <button class="btn" style="background: #e74c3c; margin-top: 20px; font-size: 14px;" onclick="logout()">Déconnexion</button>
+        </div>
+    </div>
+
+    <script>
+        // La variable qui garde l'identité sécurisée le temps de la session
+        let currentPatient = null;
+
+        // --- 1. FONCTION D'AUTHENTIFICATION ---
+        async function authenticatePatient() {
+            const fileNumber = document.getElementById('fileNumber').value.trim();
+            const firstName = document.getElementById('firstName').value.trim();
+            const lastName = document.getElementById('lastName').value.trim();
+            const dob = document.getElementById('dob').value;
+            const errorDiv = document.getElementById('error-msg');
+            const btn = document.getElementById('loginBtn');
+
+            if (!fileNumber || !firstName || !lastName || !dob) {
+                errorDiv.textContent = "⚠️ Veuillez remplir tous les champs.";
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = "⏳ Vérification...";
+            errorDiv.textContent = "";
+
+            try {
+                // Appel API vers notre Backend Node.js
+                const response = await fetch('/api/patient/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileNumber, firstName, lastName, dob })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Authentification réussie !
+                    currentPatient = data.patient;
+
+                    // On cache le login et on affiche l'upload
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('uploadSection').classList.remove('hidden');
+
+                    // On personnalise l'interface
+                    document.getElementById('welcomeMsg').textContent = `Bienvenue, ${currentPatient.first_name}`;
+                    document.getElementById('displayFileNumber').textContent = currentPatient.file_number;
+                } else {
+                    errorDiv.textContent = "❌ " + data.error;
+                }
+            } catch (err) {
+                errorDiv.textContent = "❌ Erreur de connexion au serveur.";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "🔒 S'authentifier";
+            }
+        }
+
+        // --- 2. FONCTIONS D'UPLOAD ---
+        function updateFileName() {
+            const fileInput = document.getElementById('fileInput');
+            const display = document.getElementById('fileNameDisplay');
+            if (fileInput.files.length > 0) display.textContent = "✓ Fichier prêt : " + fileInput.files[0].name;
+            else display.textContent = "Aucun fichier sélectionné";
+        }
+
+        async function uploadDocument() {
+            if (!currentPatient) return alert("Erreur d'authentification");
+
+            const file = document.getElementById('fileInput').files[0];
+            const successDiv = document.getElementById('success-msg');
+            const btn = document.getElementById('uploadBtn');
+
+            if (!file) {
+                successDiv.style.color = "#e74c3c";
+                successDiv.textContent = "⚠️ Veuillez sélectionner un fichier.";
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = "⏳ Chiffrement...";
+            successDiv.textContent = "";
+
+            try {
+                // 1. Demande de l'URL avec le VRAI numéro de dossier du patient
+                const response = await fetch('/api/upload-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filename: file.name,
+                        fileNumber: currentPatient.file_number
+                    })
+                });
+
+                if (!response.ok) throw new Error("Erreur serveur");
+                const { uploadUrl } = await response.json();
+
+                // 2. Upload direct sur S3 chiffré par KMS
+                const uploadResponse = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: file,
+                    headers: { 'Content-Type': file.type }
+                });
+
+                if (uploadResponse.ok) {
+                    successDiv.style.color = "#27ae60";
+                    successDiv.textContent = "✅ Transmis de manière sécurisée à votre médecin !";
+                    document.getElementById('fileInput').value = "";
+                    updateFileName();
+                } else {
+                    throw new Error("Échec du stockage");
+                }
+            } catch (error) {
+                successDiv.style.color = "#e74c3c";
+                successDiv.textContent = "❌ Erreur lors de l'envoi.";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "📤 Chiffrer et Envoyer";
+            }
+        }
+
+        // --- 3. DÉCONNEXION ---
+        function logout() {
+            currentPatient = null;
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('uploadSection').classList.add('hidden');
+            document.getElementById('success-msg').textContent = "";
+            document.getElementById('error-msg').textContent = "";
+            document.getElementById('fileNumber').value = "";
+            document.getElementById('fileInput').value = "";
+            updateFileName();
+        }
+    </script>
+</body>
+</html>

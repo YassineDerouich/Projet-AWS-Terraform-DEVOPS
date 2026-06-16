@@ -1,0 +1,13 @@
+server {
+    listen 80 default_server;
+
+    root /var/www/html;
+    index index.html;
+
+    location /api/ {
+        # REMPLACE L'IP CI-DESSOUS PAR L'IP PRIVÉE DE TON BACKEND
+        proxy_pass http://10.0.2.244:3000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
